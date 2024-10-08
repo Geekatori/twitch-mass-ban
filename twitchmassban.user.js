@@ -140,11 +140,10 @@
         <div class="list"></div>
         <div style="display: flex; margin: 5px;">
             <span style="flex-grow: 1;"></span>
-            <button class="ignoreAll">Ignore All</button>
             <button class="banAll">Ban All</button>
         </div>
     </div>
-    <div class="footer"><a href="https://github.com/victornpb/twitch-mass-ban/issues" target="_blank">Issues or help</a>
+    <div class="footer"><a href="https://github.com/geekatori/twitch-mass-ban/issues" target="_blank">Issues or help</a>
     </div>
 </div>
 `;
@@ -169,8 +168,7 @@ let watchdogTimer;
 setInterval(appendActivatorBtn, 5000);
 
 //events
-d.querySelector(".ignoreAll").onclick = ignoreAll;
-d.querySelector(".banAll").onclick = banAll;
+d.querySelector(".banAll").onclick = banAll; // Suppression de l'écoute de "ignoreAll"
 d.querySelector(".closeBtn").onclick = hide;
 
 d.querySelector(".import button.importBtn").onclick = importList;
@@ -196,7 +194,6 @@ function importList() {
 }
 
 let queueList = new Map(); // Modification ici pour stocker les utilisateurs et leurs raisons
-let ignoredList = new Set();
 let bannedList = new Set();
 
 // Bannir un utilisateur avec une raison
@@ -279,5 +276,4 @@ function delay(ms) {
 
 // Add modal to document
 document.body.appendChild(d);
-
 })();
