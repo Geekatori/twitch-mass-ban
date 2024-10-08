@@ -2,14 +2,13 @@
 // ==UserScript==
 // @name          Twitch RaidHammer - Easily ban multiple accounts during hate raids
 // @description   A tool for moderating Twitch easier during hate raids
-// @namespace     https://github.com/victornpb/twitch-mass-ban
-// @version       1.1.4
+// @namespace     https://github.com/geekatori/twitch-mass-ban
+// @version       1.1.4.1
 // @match         *://*.twitch.tv/*
 // @run-at        document-idle
 // @author        victornpb
-// @homepageURL   https://github.com/victornpb/twitch-mass-ban
-// @supportURL    https://github.com/victornpb/twitch-mass-ban/discussions
-// @contributionURL https://www.buymeacoffee.com/vitim
+// @author        geekatori
+// @homepageURL   https://github.com/geekatori/twitch-mass-ban
 // @grant         none
 // @license       MIT
 // ==/UserScript==
@@ -126,9 +125,9 @@
         <span style="flex-grow: 1;"></span>
         <button class="closeBtn">X</button>
     </div>
-    <div class="import" style="display:none;">
-        <div>Mass BAN</div>
-        <textarea placeholder="Type one username per line"></textarea>
+    <div class="import">
+        <div>Mass BAN (Format: username: reason)</div> <!-- Modification ici -->
+        <textarea placeholder="Type one username per line, with optional reason (username: reason)"></textarea> <!-- Nouvelle instruction -->
         <div style="text-align:right;">
             <button class="cancelBtn">Cancel</button>
             <button class="importBtn">Add to list</button>
@@ -149,310 +148,136 @@
     </div>
 </div>
 `;
-    const LOGPREFIX = '[RAIDHAMMER]';
+const LOGPREFIX = '[RAIDHAMMER]';
 
-    // modal
-    const d = document.createElement("div");
+// modal
+const d = document.createElement("div");
+d.style.display = 'none';
+d.innerHTML = html;
+const textarea = d.querySelector("textarea");
+
+// activation button
+const activateBtn = document.createElement('button');
+activateBtn.innerHTML = `RaidHammer`;
+activateBtn.setAttribute('title', 'RaidHammer');
+activateBtn.onclick = toggle;
+
+let enabled;
+let watchdogTimer;
+
+// Ajout du bouton et de l'interface à Twitch
+setInterval(appendActivatorBtn, 5000);
+
+//events
+d.querySelector(".ignoreAll").onclick = ignoreAll;
+d.querySelector(".banAll").onclick = banAll;
+d.querySelector(".closeBtn").onclick = hide;
+
+d.querySelector(".import button.importBtn").onclick = importList;
+d.querySelector(".import button.cancelBtn").onclick = toggleImport;
+
+// Traitement du contenu de la zone de texte
+function importList() {
+    const textarea = d.querySelector(".import textarea");
+    const lines = textarea.value.split(/\n/).map(line => line.trim()).filter(Boolean);
+    
+    // Traitement du format 'username: reason'
+    for (const line of lines) {
+        const [username, reason] = line.split(':').map(part => part.trim());
+        
+        if (/^[\w_]+$/.test(username)) {
+            // Ajouter le pseudo et la raison au format correct
+            queueList.set(username, reason || "Comportement inapproprié"); // Par défaut si aucune raison n'est fournie
+        }
+    }
+    textarea.value = '';
+    toggleImport();
+    renderList();
+}
+
+let queueList = new Map(); // Modification ici pour stocker les utilisateurs et leurs raisons
+let ignoredList = new Set();
+let bannedList = new Set();
+
+// Bannir un utilisateur avec une raison
+async function banAll() {
+    console.log(LOGPREFIX, 'Banning all...', queueList);
+    for (const [user, reason] of queueList.entries()) {
+        banItem(user, reason);
+        await delay(250); // Pause entre chaque ban
+    }
+}
+
+// Mise à jour de banItem pour inclure une raison
+function banItem(user, reason) {
+    console.log(LOGPREFIX, 'Ban user', user, 'with reason:', reason);
+    queueList.delete(user);
+    bannedList.add(user);
+    sendMessage(`/ban ${user} ${reason}`); // Commande avec la raison
+    renderList();
+}
+
+// Fonction d'envoi du message au chat Twitch
+function sendMessage(msg) {
+    const textarea = document.querySelector("[data-a-target='chat-input']");
+    if (!textarea) return;
+    const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+    nativeTextAreaValueSetter.call(textarea, msg);
+    const event = new Event('input', { bubbles: true });
+    textarea.dispatchEvent(event);
+    document.querySelector("[data-a-target='chat-send-button']").click();
+}
+
+// Rendu de la liste d'utilisateurs à bannir avec leurs raisons
+function renderList() {
+    const renderItem = (user, reason) => `
+    <li>
+      <button class="ban" data-user="${user}" data-reason="${reason}">Ban</button>
+      <span>${user} - ${reason}</span>
+    </li>
+  `;
+    let inner = queueList.size ? [...queueList.entries()].map(([user, reason]) => renderItem(user, reason)).join('') : `
+      <div class="empty">
+          <h4>No users to ban :)</h4>
+      </div>`;
+
+    d.querySelector('.list').innerHTML = `
+    <ul>
+      ${inner}
+    </ul>
+  `;
+}
+
+// Append activation button to the Twitch interface
+function appendActivatorBtn() {
+    const parent = document.querySelector(".chat-input__buttons-container");
+    if (parent && !parent.contains(activateBtn)) {
+        parent.appendChild(activateBtn);
+    }
+}
+
+// Toggle modal visibility
+function toggle() {
+    d.style.display = d.style.display === 'none' ? '' : 'none';
+}
+
+// Toggle import section visibility
+function toggleImport() {
+    const importSection = d.querySelector(".import");
+    importSection.style.display = importSection.style.display === 'none' ? '' : 'none';
+}
+
+// Hide the modal
+function hide() {
     d.style.display = 'none';
-    d.innerHTML = html;
-    const textarea = d.querySelector("textarea");
+}
 
-    // activation button
-    const activateBtn = document.createElement('button');
-    activateBtn.innerHTML = `
-      <svg version="1.0" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 1280 1280" style="fill: currentcolor;">
-        <path d="M517 1c-16 3-28 10-41 22l-10 10 161 160 161 161 2-2c6-4 17-19 21-25 10-19 12-44 4-64-6-14-5-13-120-129L576 17c-8-7-18-12-27-15-8-1-25-2-32-1zM249 250 77 422l161 161 161 161 74-74 74-75 18 19 18 18-2 4c-4 6-4 14-1 20a28808 28808 0 0 0 589 621c4 2 6 3 13 3 6 0 8-1 13-3 6-4 79-77 82-83 4-9 4-21-2-29l-97-93-235-223-211-200c-51-47-73-68-76-69-6-3-13-3-19 0l-5 3-18-18-18-18 74-74 74-74-161-161L422 77 249 250zM23 476a75 75 0 0 0-10 95c4 6 219 222 231 232 8 7 16 11 26 14 6 2 10 2 22 2s14 0 22-2l14-6c5-4 20-16 24-21l2-2-161-161L32 466l-9 10z"/>
-      </svg>
-    `;
-    activateBtn.style.cssText = `
-        display: inline-flex;
-        -webkit-box-align: center;
-        align-items: center;
-        -webkit-box-pack: center;
-        justify-content: center;
-        user-select: none;
-        height: var(--button-size-default);
-        width: var(--button-size-default);
-        border-radius: var(--border-radius-medium);
-        background-color: var(--color-background-button-text-default);
-        color: var(--color-fill-button-icon);
-    `;
-    activateBtn.setAttribute('title', 'RaidHammer');
-    activateBtn.onclick = toggle;
+// Utility delay function for pauses
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-    let enabled;
-    let watchdogTimer;
-
-    function appendActivatorBtn() {
-        const modBtn = document.querySelector('[data-test-selector="mod-view-link"]');
-        if (modBtn) {
-            const twitchBar = modBtn.parentElement.parentElement.parentElement;
-            if (twitchBar && !twitchBar.contains(activateBtn)) {
-                console.log(LOGPREFIX, 'Mod tools available. Adding button...');
-                twitchBar.insertBefore(activateBtn, twitchBar.firstChild);
-                document.body.appendChild(d);
-                if (!enabled) {
-                    console.log(LOGPREFIX, 'Started chatWatchdog...');
-                    watchdogTimer = setInterval(chatWatchdog, 500);
-                    enabled = true;
-                }
-            }
-
-        } else if (document.location.toString().includes('/moderator/')){
-            const chatBtn = document.querySelector('[data-a-target="chat-send-button"]');
-            const twitchBar = chatBtn.parentElement.parentElement.parentElement;
-            if (twitchBar && !twitchBar.contains(activateBtn)) {
-                console.log(LOGPREFIX, 'Mod tools available. Adding button...');
-                twitchBar.insertBefore(activateBtn, twitchBar.firstChild);
-                document.body.appendChild(d);
-                if (!enabled) {
-                    console.log(LOGPREFIX, 'Started chatWatchdog...');
-                    watchdogTimer = setInterval(chatWatchdog, 500);
-                    enabled = true;
-                }
-            }
-        }
-        else {
-            if (enabled) {
-                console.log(LOGPREFIX, 'Mod tools not found. Stopped chatWatchdog!');
-                clearInterval(watchdogTimer);
-                watchdogTimer = enabled = false;
-                hide();
-            }
-        }
-    }
-    setInterval(appendActivatorBtn, 5000);
-
-
-    //events
-    d.querySelector(".ignoreAll").onclick = ignoreAll;
-    d.querySelector(".banAll").onclick = banAll;
-    d.querySelector(".closeBtn").onclick = hide;
-
-    d.querySelector(".import button.importBtn").onclick = importList;
-    d.querySelector(".import button.cancelBtn").onclick = toggleImport;
-
-    // delegated events
-    d.addEventListener('click', e => {
-        const target = e.target;
-        if (target.matches('.ignore')) ignoreItem(target.dataset.user);
-        if (target.matches('.ban')) banItem(target.dataset.user);
-        if (target.matches('.accountage')) accountage(target.dataset.user);
-        if (target.matches('.toggleImport')) toggleImport();
-
-    });
-
-    const delay = t => new Promise(r => setTimeout(r, t));
-
-    function show() {
-        console.log(LOGPREFIX, 'Show');
-        d.style.display = '';
-        renderList();
-    }
-
-    function hide() {
-        console.log(LOGPREFIX, 'Hide');
-        d.style.display = 'none';
-    }
-
-    function toggle() {
-        if (d.style.display !== 'none') hide();
-        else show();
-    }
-
-    function toggleImport() {
-        const importDiv = d.querySelector(".import");
-        const body = d.querySelector(".body");
-        if (importDiv.style.display !== 'none') {
-            importDiv.style.display = 'none';
-            body.style.display = '';
-        }
-        else {
-            importDiv.style.display = '';
-            body.style.display = 'none';
-            d.querySelector(".import textarea").focus();
-        }
-    }
-
-    function importList() {
-        const textarea = d.querySelector(".import textarea");
-        const lines = textarea.value.split(/\n/).map(line => line.trim()).filter(Boolean);
-        for (const line of lines) {
-            if (/^[\w_]+$/.test(line)) queueList.add(line);
-        }
-        textarea.value = '';
-        toggleImport();
-        renderList();
-    }
-
-    let queueList = new Set();
-    let ignoredList = new Set();
-    let bannedList = new Set();
-
-    function chatWatchdog() {
-        const recentNames = extractRecent();
-        if (recentNames.length) {
-            const newNames = recentNames
-                .filter(name => !queueList.has(name))
-                .filter(name => !ignoredList.has(name))
-                .filter(name => !bannedList.has(name));
-
-            if (newNames.length) {
-                newNames.forEach(name => queueList.add(name));
-                onFollower();
-            }
-        }
-    }
-
-    function parseChat() {
-        return Array.from(document.querySelectorAll('[data-test-selector="chat-line-message"]')).map(chat => {
-            return {
-                username: chat.querySelector('[data-test-selector="message-username"]').innerText,
-                message: chat.querySelector('[data-test-selector="chat-line-message-body"]').innerText,
-                // timestamp: chat.querySelector('[data-test-selector="chat-timestamp"]').innerText,
-            };
-        });
-    }
-
-    function extractRecent() {
-        let newFollowers = new Set();
-        const messages = parseChat().filter(m => m.username === 'StreamElements' || m.username === 'Streamlabs');
-        for (const { message } of messages) {
-            const match = (
-                message.match(/Thank you for following ([\w_]+)/) ||
-                message.match(/Welcome! ([\w_]+) Thank you for following!/)
-            );
-            if (match) newFollowers.add(match[1]);
-        }
-
-        return [...newFollowers];
-    }
-
-    function onFollower() {
-        console.log(LOGPREFIX, 'onFollower', queueList);
-        renderList();
-        show();
-    }
-
-    function ignoreAll() {
-        console.log(LOGPREFIX, 'Ignoring all...', queueList);
-        for (const user of queueList) {
-            ignoreItem(user);
-        }
-    }
-
-    async function banAll() {
-        console.log(LOGPREFIX, 'Banning all...', queueList);
-        for (const user of queueList) {
-            banItem(user);
-            await delay(250);
-        }
-    }
-
-    function accountage(user) {
-        console.log(LOGPREFIX, 'Accountage', user);
-        sendMessage('!accountage ' + user);
-    }
-
-    function ignoreItem(user) {
-        console.log(LOGPREFIX, 'Ignored user', user);
-        queueList.delete(user);
-        ignoredList.add(user);
-        renderList();
-        if (queueList.size === 0) hide(); // auto hide on the last
-    }
-
-    function banItem(user) {
-        console.log(LOGPREFIX, 'Ban user', user);
-        queueList.delete(user);
-        bannedList.add(user);
-        sendMessage('/ban ' + user);
-        renderList();
-    }
-
-    function sendMessage(msg) {
-        try{
-            sendMessageOld(msg);
-        }
-        catch(_){
-            sendMessageSlate(msg);
-        }
-    }
-
-    function sendMessageOld(msg) {
-        const textarea = document.querySelector("[data-a-target='chat-input']");
-        const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
-        nativeTextAreaValueSetter.call(textarea, msg);
-        const event = new Event('input', { bubbles: true });
-        textarea.dispatchEvent(event);
-        document.querySelector("[data-a-target='chat-send-button']").click();
-    }
-
-    function sendMessageSlate(msg) {
-        function _injectInput(el, data) {
-            [
-                'keydown',
-                'beforeinput',
-                //'input',
-            ].forEach((event, i) => {
-                const eventObj = {
-                    altKey: false,
-                    charCode: 0,
-                    ctrlKey: false,
-                    metaKey: false,
-                    shiftKey: false,
-                    which: '',
-                    keyCode: '',
-                    data: data,
-                    inputType: 'insertText',
-                    key: data,
-                };
-                el.dispatchEvent(new InputEvent(event, eventObj));
-            });
-        }
-
-        function _triggerKeyboardEvent(el, keyCode) {
-            const eventObj = document.createEventObject ? document.createEventObject() : document.createEvent("Events");
-            if (eventObj.initEvent) {
-                eventObj.initEvent("keydown", true, true);
-            }
-            eventObj.keyCode = keyCode;
-            eventObj.which = keyCode;
-            el.dispatchEvent ? el.dispatchEvent(eventObj) : el.fireEvent("onkeydown", eventObj);
-        }
-
-        const editor = document.querySelector('[data-slate-editor="true"]');
-        editor.focus();
-        _injectInput(editor, msg);
-        _triggerKeyboardEvent(editor, 13);
-    }
-
-
-    function renderList() {
-        d.querySelector(".ignoreAll").style.display = queueList.size ? '' : 'none';
-        d.querySelector(".banAll").style.display = queueList.size ? '' : 'none';
-        const renderItem = item => `
-        <li>
-          <button class="accountage" data-user="${item}" title="Check account age">?</button>
-          <button class="ignore" data-user="${item}">Ignore</button>
-          <button class="ban" data-user="${item}">Ban</button>
-          <span>${item}</span>
-        </li>
-      `;
-
-        let inner = queueList.size ? [...queueList].map(user => renderItem(user)).join('') : `
-          <div class="empty">
-              <h4>Recent followers is empty :)</h4>
-              <p>Automatically listening for new followers...</p>
-              <br><br>
-              <button class="toggleImport" title="Add a list of usernames">Import list</button>
-          </div>`;
-
-        d.querySelector('.list').innerHTML = `
-        <ul>
-          ${inner}
-        </ul>
-      `;
-    }
+// Add modal to document
+document.body.appendChild(d);
 
 })();
