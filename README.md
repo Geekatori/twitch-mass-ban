@@ -1,4 +1,7 @@
 # 🧑‍⚖️ Twitch RaidHammer - An utility for Easily banning multiple hate raid accounts
+
+Forked from victornpb/twitch-mass-ban
+
 Everytime someone follows the window should appear, then you can choose to:
 - <kbd>?</kbd> view account age
 - <kbd>IGNORE</kbd> legit users
