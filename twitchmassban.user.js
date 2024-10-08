@@ -3,7 +3,7 @@
 // @name          Twitch RaidHammer - Easily ban multiple accounts during hate raids
 // @description   A tool for moderating Twitch easier during hate raids
 // @namespace     https://github.com/geekatori/twitch-mass-ban
-// @version       1.1.4.2
+// @version       1.1.4.3
 // @match         *://*.twitch.tv/*
 // @run-at        document-idle
 // @author        victornpb
@@ -216,14 +216,31 @@ function banItem(user, reason) {
 
 // Fonction d'envoi du message au chat Twitch
 function sendMessage(msg) {
-    const textarea = document.querySelector("[data-a-target='chat-input']");
-    if (!textarea) return;
-    const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
-    nativeTextAreaValueSetter.call(textarea, msg);
-    const event = new Event('input', { bubbles: true });
-    textarea.dispatchEvent(event);
-    document.querySelector("[data-a-target='chat-send-button']").click();
+    // Sélectionne le nouvel élément contenteditable
+    const chatInput = document.querySelector("[data-a-target='chat-input']");
+
+    if (!chatInput) {
+        console.error(LOGPREFIX, 'Chat input element not found.');
+        return;
+    }
+
+    // Modifie le contenu de l'élément contenteditable
+    chatInput.innerHTML = `<div data-slate-node="element"><span data-slate-node="text">${msg}</span></div>`;
+
+    // Déclenche l'événement 'input' pour simuler la saisie utilisateur
+    const inputEvent = new Event('input', { bubbles: true });
+    chatInput.dispatchEvent(inputEvent);
+
+    // Sélectionne et clique sur le bouton d'envoi
+    const sendButton = document.querySelector("[data-a-target='chat-send-button']");
+    if (sendButton) {
+        sendButton.click();
+    } else {
+        console.error(LOGPREFIX, 'Send button not found.');
+    }
 }
+
+
 
 // Rendu de la liste d'utilisateurs à bannir avec leurs raisons
 function renderList() {
